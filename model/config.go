@@ -709,7 +709,7 @@ func (s *SqlSettings) SetDefaults() {
 		s.DataSourceSearchReplicas = []string{}
 	}
 
-	if s.AtRestEncryptKey == nil {
+	if s.AtRestEncryptKey == nil || len(*s.AtRestEncryptKey) == 0 {
 		s.AtRestEncryptKey = NewString(NewRandomString(32))
 	}
 
