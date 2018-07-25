@@ -23,8 +23,13 @@ type supervisor struct {
 	implemented [TotalHooksId]bool
 }
 
-func newSupervisor(pluginInfo *model.BundleInfo, parentLogger *mlog.Logger, apiImpl API) (*supervisor, error) {
-	supervisor := supervisor{}
+func newSupervisor(pluginInfo *model.BundleInfo, parentLogger *mlog.Logger, apiImpl API) (retSupervisor *supervisor, retErr error) {
+	retSupervisor = &supervisor{}
+	defer func() {
+		if retErr != nil {
+			retSupervisor.Shutdown()
+		}
+	}()
 
 	wrappedLogger := pluginInfo.WrapLogger(parentLogger)
 
@@ -49,7 +54,7 @@ func newSupervisor(pluginInfo *model.BundleInfo, parentLogger *mlog.Logger, apiI
 	}
 	executable = filepath.Join(pluginInfo.Path, executable)
 
-	supervisor.client = plugin.NewClient(&plugin.ClientConfig{
+	retSupervisor.client = plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: handshake,
 		Plugins:         pluginMap,
 		Cmd:             exec.Command(executable),
@@ -59,7 +64,7 @@ func newSupervisor(pluginInfo *model.BundleInfo, parentLogger *mlog.Logger, apiI
 		StartTimeout:    time.Second * 3,
 	})
 
-	rpcClient, err := supervisor.client.Client()
+	rpcClient, err := retSupervisor.client.Client()
 	if err != nil {
 		return nil, err
 	}
@@ -69,28 +74,30 @@ func newSupervisor(pluginInfo *model.BundleInfo, parentLogger *mlog.Logger, apiI
 		return nil, err
 	}
 
-	supervisor.hooks = raw.(Hooks)
+	retSupervisor.hooks = raw.(Hooks)
 
-	if impl, err := supervisor.hooks.Implemented(); err != nil {
+	if impl, err := retSupervisor.hooks.Implemented(); err != nil {
 		return nil, err
 	} else {
 		for _, hookName := range impl {
 			if hookId, ok := hookNameToId[hookName]; ok {
-				supervisor.implemented[hookId] = true
+				retSupervisor.implemented[hookId] = true
 			}
 		}
 	}
 
-	err = supervisor.Hooks().OnActivate()
+	err = retSupervisor.Hooks().OnActivate()
 	if err != nil {
 		return nil, err
 	}
 
-	return &supervisor, nil
+	return retSupervisor, nil
 }
 
 func (sup *supervisor) Shutdown() {
-	sup.client.Kill()
+	if sup.client != nil {
+		sup.client.Kill()
+	}
 }
 
 func (sup *supervisor) Hooks() Hooks {
